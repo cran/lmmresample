@@ -1,0 +1,184 @@
+# lmmresample 0.1.0
+
+* First release on CRAN.
+* Three vignettes: getting started (trial-level analysis), time courses
+  (diagnostics, calibration and intervals for full time series) and
+  multiple comparisons (families of tests and pairwise comparisons).
+* `diag_timecourse()` now flags a misfit when the largest standardised mean
+  residual (mean / SE across clusters) exceeds a Bonferroni-corrected 5%
+  threshold over all time points and groups, instead of a fixed size of the
+  mean residual. The result gains `max_z` and `threshold`, and `tidy()` a
+  `z` column.
+
+# lmmresample 0.0.0.9005
+
+* Parallel workers now attach the package of the model's fitting function
+  (e.g. lme4), so that refits in `perm_calibrate()` and the other resampling
+  functions no longer fail when that package is not attached in the workers.
+* `perm_calibrate()` builds the reduced model before the simulations are
+  sent to parallel workers, so that calibration no longer fails when the
+  model call refers to objects of the calling environment (e.g. a control
+  object).
+* `perm_calibrate()` reports a rejection rate of `NA` instead of failing when
+  no simulation gave a valid p-value.
+
+# lmmresample 0.0.0.9004
+
+* New `perm_pairwise()` for pairwise comparisons between the levels of a
+  factor (post hoc tests). Each pair is tested by Freedman-Lane permutation
+  in a reparametrisation of the model where the other levels stay in the
+  reduced model, so an effect of another level does not leak into the test
+  of a pair. Pairs are compared in level or through an interaction (e.g.
+  with a spline of time), adjusted by Westfall-Young max-t or min-p
+  (step-down) or by Holm, with optional bootstrap intervals of each
+  difference.
+
+# lmmresample 0.0.0.9003
+
+* `boot_ci()` gains `strata`: with case resampling, clusters are drawn within
+  the levels of a cluster-level column such as `group`, so every bootstrap
+  sample keeps the observed number of participants per group. The expanded
+  percentile interval then uses G - S degrees of freedom. The wild bootstrap
+  keeps the design fixed and ignores `strata`.
+
+# lmmresample 0.0.0.9002
+
+* Formula helpers (`findbars()`, `nobars()`) are now taken from
+  reformulas, where recent versions of lme4 have moved them;
+  this removes a deprecation warning with lme4 >= 2.0.
+
+# lmmresample 0.0.0.9001
+
+* `perm_test()` and `perm_maxt()` with Freedman-Lane: the reduced model now
+  also drops random slopes of lower-order terms contained in the tested term
+  when the other variables of that term are constant within the grouping
+  factor. Previously, testing a between-participant interaction such as
+  `group:condition` in a model with `(1 + condition | participant)` kept the
+  condition slope, which absorbed the interaction: the test had no power and
+  its p-values were centred near 0.5 with or without an effect.
+* `boot_ci()` gains the expanded percentile interval (`ci = "expanded"`,
+  Hesterberg, 2015), now the default. Plain percentile intervals were too
+  narrow with few clusters (about 87% coverage of 95% intervals with 8
+  participants and 91% with 15 in simulations); the expanded interval matches
+  a t interval with G - 1 degrees of freedom and changes little with many
+  clusters.
+
+# lmmresample 0.0.0.9000
+
+* `diag_acf()` now returns a bias-corrected AR(1) coefficient (`phi`).
+  Centring each short series biased the mean autocorrelation strongly towards
+  zero (e.g. 0.64 for a true 0.92 with 20 samples per series); the
+  coefficient is now chosen so that the expected autocorrelations of centred
+  AR(1) series of the observed lengths match the observed ones over all
+  lags. The uncorrected lag-1 mean is kept as `phi_raw`, and
+  `correct = FALSE` restores the previous behaviour. `perm_calibrate()`
+  therefore simulates residuals with realistic dependence.
+
+* A lower-order term can now be tested in the presence of interactions when
+  every variable it interacts with is numeric and centred, as in growth
+  curve analysis with orthogonal polynomials (`poly(time, 3)`); it is tested
+  with Freedman-Lane and represents the average difference over the window.
+
+* Models whose fixed-effects design is rank deficient (coefficients dropped
+  by `lm()` or `lmer()`) are now refused with an informative error, instead
+  of silently testing a different set of coefficients.
+
+* The documentation of `perm_calibrate()` explains that systematic patterns
+  left in the residuals (such as an unmodelled average time course) are
+  simulated as noise, and recommends fitting the time course flexibly first.
+
+* Refits of mixed models start from the variance parameters of the original
+  fit and skip lme4's derivative-based convergence check, roughly halving
+  the time per refit on large data; `options(lmmresample.fast = FALSE)`
+  restores the default settings.
+
+* Fixes from an independent review:
+  - Freedman-Lane: fitted values of the reduced model now keep only random
+    effects grouped above the resampled units, so effects can no longer be
+    absorbed by participant or trial intercepts when those units are
+    permuted.
+  - Freedman-Lane permutation of residuals between units now requires `time`
+    and matches samples by time, refusing units with different time points.
+  - `perm_maxt()` with min-p includes the observed data in the reference set
+    of each test, which removes an anti-conservative bias for small `B`.
+  - `data` supplied in a different order from the fitted model, and models
+    with weights or offsets, are refused.
+  - Series identifiers that repeat across participants are refused in
+    `diag_acf()` and `perm_calibrate()`.
+  - Default coefficients in `boot_ci()` and `diag_loso()` exclude terms of
+    the cluster factor; `diag_agreement()` handles any contrast coding;
+    groupings that include the cluster are no longer reported as crossed.
+  - Random-effects terms left empty in the reduced model are dropped;
+    calibration is reproducible with any RNG kind; the sharp null warns when
+    there is no random slope to remove.
+
+* New `boot_ci()` computes bootstrap confidence intervals for fixed effects by
+  resampling whole clusters (case bootstrap, with repeated clusters and
+  nested units relabelled) or by cluster wild bootstrap with Rademacher
+  weights. Percentile, BCa (jackknife acceleration over clusters) and basic
+  intervals; `confint()` returns any type without refitting. Random effects
+  crossed with the cluster trigger a warning.
+
+* `perm_maxt()` gains `method = "freedman-lane"`, so families of tests can
+  include interactions and covariate-adjusted effects, and different terms
+  in different models, and `combine = "min-p"`, which combines statistics on
+  different scales (e.g. t and chi-square). The adjustment procedure is now
+  chosen with `adjust`.
+
+* New `diag_loso()` refits the model leaving out each participant in turn and
+  flags influential participants; `diag_agreement()` compares the model
+  coefficient of a two-level condition with the mean participant-level
+  difference.
+
+* New diagnostics: `diag_acf()` estimates the autocorrelation of residuals
+  within series (its lag-1 value can be passed to `perm_calibrate()`), and
+  `diag_timecourse()` shows mean residuals over time by condition to detect a
+  misspecified time course or a missing condition by time interaction.
+
+* The package now supports linear models only (`lm()` and `lme4::lmer()`).
+  Generalized linear (mixed) models are refused with an informative message,
+  because residual permutation does not apply to them.
+
+* `perm_test()` and `perm_calibrate()` gain `method = "freedman-lane"`:
+  residuals of the reduced model are permuted between whole units or
+  sign-flipped by block, which allows tests of interactions (e.g.
+  `condition:time`), of terms with several coefficients (joint Wald
+  chi-square) and of effects in the presence of nuisance terms. Random slopes
+  of the tested term are removed from the reduced model. `method = "auto"`
+  chooses relabelling for simple main effects and Freedman-Lane otherwise.
+
+* `sim_blocks()` gains `effect_onset` (condition effects that appear later in
+  the trial) and `ar1_trials` (correlation between consecutive trials).
+
+* New `perm_maxt()` and `perm_spec()` test the same variable in several models
+  at once (e.g. one model per feature) and control the family-wise error rate
+  with the Westfall-Young max-t procedure (single-step or step-down), using
+  one shared relabelling of units per permutation.
+
+* New `perm_calibrate()` checks the type I error of a permutation test for the
+  user's own design by simulating data under the null from the fitted model
+  (mean or sharp null, optional AR(1) residuals within series), and compares
+  it with the model's Wald test. Includes p-value calibration and
+  rejection-rate plots.
+
+* New `perm_test()` tests a fixed-effect term by permuting it across whole
+  units (trials or participants) and refitting the full model. Supports
+  `lm()` and `lme4::lmer()` models, runs in parallel
+  through the future framework, and records failed, non-convergent and
+  singular refits. Results have `print()`, `summary()`, `tidy()` and `plot()`
+  methods, including a trace plot of the running p-value.
+
+* New `exch_within()`, `exch_signflip()` and `exch_free()` declare which units
+  are exchangeable: within blocks (e.g. trials within participants), by
+  swapping the two levels of the tested variable for whole blocks
+  (sign-flipping, for the mean effect when participants differ in their
+  effect), freely, or within strata.
+
+* `sim_blocks()` gains `prop_condition` (unbalanced conditions, e.g. oddball
+  designs), `residual_df` (heavy-tailed residuals), and per-participant trial
+  counts through a vector `n_trials`.
+
+* New `sim_blocks()` simulates block-structured repeated measurements (full
+  time series, trial-level or participant-level data) for within-participant,
+  between-group and mixed designs, with known effects, random intercepts and
+  slopes, and AR(1) residuals within trials.
